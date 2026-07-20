@@ -9,7 +9,9 @@ RUN uv sync --frozen --no-dev
 
 COPY backend/src ./src
 COPY backend/migrations ./migrations
+COPY docker/backend-entrypoint.sh /usr/local/bin/life-os-backend
+RUN chmod +x /usr/local/bin/life-os-backend
 
 EXPOSE 8000
 
-CMD ["uv", "run", "--no-dev", "uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["life-os-backend"]

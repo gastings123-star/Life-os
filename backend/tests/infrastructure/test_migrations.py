@@ -7,7 +7,7 @@ from alembic.script import ScriptDirectory
 from src.infrastructure.database.config import DATABASE_URL_ENVIRONMENT_VARIABLE
 
 
-def test_alembic_current_supports_database_without_revisions(
+def test_alembic_current_supports_empty_database_with_daily_planning_revision(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -18,6 +18,6 @@ def test_alembic_current_supports_database_without_revisions(
     config = Config(backend_root / "alembic.ini")
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == []
+    assert script.get_heads() == ["20260720_01"]
     command.current(config)
     assert database_path.exists()
