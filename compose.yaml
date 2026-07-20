@@ -3,8 +3,12 @@ services:
     build:
       context: .
       dockerfile: docker/backend.Dockerfile
+    environment:
+      LIFE_OS_DATABASE_URL: sqlite:////data/life-os.sqlite3
     ports:
       - "8000:8000"
+    volumes:
+      - ./data:/data
 
   frontend:
     build:

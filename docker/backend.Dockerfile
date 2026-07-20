@@ -4,10 +4,11 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.29 /uv /uvx /bin/
 
 WORKDIR /app
 
-COPY backend/pyproject.toml backend/uv.lock ./
+COPY backend/pyproject.toml backend/uv.lock backend/alembic.ini ./
 RUN uv sync --frozen --no-dev
 
 COPY backend/src ./src
+COPY backend/migrations ./migrations
 
 EXPOSE 8000
 

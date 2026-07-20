@@ -37,10 +37,39 @@ cd ../frontend && npm install
 - frontend: <http://localhost:5173>;
 - проверка backend: <http://localhost:8000/health>.
 
+## Хранение данных
+
+Backend использует локальную SQLite. Адрес подключения задается переменной `LIFE_OS_DATABASE_URL`. По умолчанию база располагается в `data/life-os.sqlite3`.
+
+Подготовить каталог данных и проверить состояние миграций локально:
+
+```bash
+mkdir -p data
+cd backend
+uv run alembic current
+```
+
+Применить доступные миграции:
+
+```bash
+cd backend
+uv run alembic upgrade head
+```
+
+До появления первой реальной миграции список ревизий остается пустым. Команды Alembic при этом выполняются без ошибки и не создают бизнес-таблиц.
+
 ## Запуск через Docker
 
 ```bash
 docker compose up --build
+```
+
+В Docker каталог проекта `./data` подключается к backend как `/data`, поэтому файл SQLite сохраняется между перезапусками контейнера.
+
+Проверить состояние миграций через Docker:
+
+```bash
+docker compose run --rm backend uv run --no-dev alembic current
 ```
 
 ## Проверки
