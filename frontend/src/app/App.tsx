@@ -19,6 +19,28 @@ type InboxItem = {
   created_at: string;
 };
 
+type WeekDay = {
+  date: string;
+  actions: ActionItem[];
+};
+
+type Week = {
+  weekStart: string;
+  days: WeekDay[];
+};
+
+type View = "day" | "week" | "inbox";
+
+const WEEKDAY_NAMES = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
 const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1"
 ).replace(/\/$/, "");
@@ -52,7 +74,14 @@ function localToday(): string {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 }
 
+function addDays(value: string, days: number): string {
+  const result = new Date(`${value}T12:00:00`);
+  result.setDate(result.getDate() + days);
+  return result.toISOString().slice(0, 10);
+}
+
 export function App() {
+  const [view, setView] = useState<View>("day");
   const [selectedDate, setSelectedDate] = useState(localToday);
   const [day, setDay] = useState<Day | null>(null);
   const [title, setTitle] = useState("");
@@ -77,6 +106,12 @@ export function App() {
   const [editingInboxTitle, setEditingInboxTitle] = useState("");
   const [schedulingItem, setSchedulingItem] = useState<InboxItem | null>(null);
   const [scheduleDate, setScheduleDate] = useState(selectedDate);
+  const [weekAnchor, setWeekAnchor] = useState(localToday);
+  const [week, setWeek] = useState<Week | null>(null);
+  const [isWeekLoading, setIsWeekLoading] = useState(false);
+  const [weeklySchedulingItem, setWeeklySchedulingItem] =
+    useState<InboxItem | null>(null);
+  const [weeklyScheduleDate, setWeeklyScheduleDate] = useState("");
 
   const isLoading =
     day?.date !== selectedDate && loadError?.date !== selectedDate;
@@ -143,6 +178,32 @@ export function App() {
 
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    if (view !== "week") return;
+    const controller = new AbortController();
+
+    fetch(`${API_BASE_URL}/week?date=${weekAnchor}`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw await responseError(response, "Не удалось загрузить неделю");
+        }
+        return (await response.json()) as Week;
+      })
+      .then((loadedWeek) => setWeek(loadedWeek))
+      .catch((requestError: Error) => {
+        if (requestError.name !== "AbortError") {
+          setError(
+            readableRequestError(requestError, "Не удалось загрузить неделю"),
+          );
+        }
+      })
+      .finally(() => setIsWeekLoading(false));
+
+    return () => controller.abort();
+  }, [view, weekAnchor]);
 
   async function handleInboxSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -260,7 +321,52 @@ export function App() {
       } else {
         setSelectedDate(scheduleDate);
       }
+      setView("day");
       setSchedulingItem(null);
+    } catch (requestError) {
+      setError(
+        readableRequestError(requestError, "Не удалось запланировать задачу"),
+      );
+    } finally {
+      setPendingInboxItemId(null);
+    }
+  }
+
+  async function handleWeeklySchedule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!weeklySchedulingItem || !weeklyScheduleDate) return;
+
+    setPendingInboxItemId(weeklySchedulingItem.id);
+    setError(null);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/inbox/${weeklySchedulingItem.id}/schedule`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ date: weeklyScheduleDate }),
+        },
+      );
+      if (!response.ok) {
+        throw await responseError(response, "Не удалось запланировать задачу");
+      }
+      const action = (await response.json()) as ActionItem;
+      setInbox((items) =>
+        items.filter((item) => item.id !== weeklySchedulingItem.id),
+      );
+      setWeek((currentWeek) =>
+        currentWeek
+          ? {
+              ...currentWeek,
+              days: currentWeek.days.map((day) =>
+                day.date === weeklyScheduleDate
+                  ? { ...day, actions: [...day.actions, action] }
+                  : day,
+              ),
+            }
+          : currentWeek,
+      );
+      setWeeklySchedulingItem(null);
     } catch (requestError) {
       setError(
         readableRequestError(requestError, "Не удалось запланировать задачу"),
@@ -389,254 +495,381 @@ export function App() {
       <header className="workspace__header">
         <div>
           <p className="eyebrow">Life OS</p>
-          <h1>План дня</h1>
-          <p className="date-label">{formattedDate}</p>
+          <h1>
+            {view === "week"
+              ? "План недели"
+              : view === "inbox"
+                ? "Inbox"
+                : "План дня"}
+          </h1>
+          {view === "day" && <p className="date-label">{formattedDate}</p>}
         </div>
-        <label className="date-picker">
-          <span>Дата</span>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(event) => setSelectedDate(event.target.value)}
-          />
-        </label>
+        {view === "day" && (
+          <label className="date-picker">
+            <span>Дата</span>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(event) => setSelectedDate(event.target.value)}
+            />
+          </label>
+        )}
       </header>
 
-      <section className="panel inbox-panel" aria-busy={isInboxLoading}>
-        <h2>Inbox</h2>
-        {isInboxLoading && <p>Загрузка…</p>}
-        {!isInboxLoading && inbox.length === 0 && (
-          <p className="empty-state">Inbox пока пуст.</p>
-        )}
-        {inbox.length > 0 && (
-          <ul className="inbox-list">
-            {inbox.map((item) => (
-              <li className="inbox-list__item" key={item.id}>
-                <span aria-hidden="true">□</span>
-                {editingInboxItemId === item.id ? (
-                  <form
-                    className="action-edit-form"
-                    onSubmit={(event) => void handleInboxRename(event, item.id)}
-                  >
-                    <label
-                      className="visually-hidden"
-                      htmlFor={`inbox-edit-${item.id}`}
-                    >
-                      Название элемента Inbox
-                    </label>
-                    <input
-                      id={`inbox-edit-${item.id}`}
-                      value={editingInboxTitle}
-                      maxLength={500}
-                      onChange={(event) =>
-                        setEditingInboxTitle(event.target.value)
+      <nav className="view-navigation" aria-label="Режим планирования">
+        <button
+          className={
+            view === "day" ? "view-navigation__active" : "button-secondary"
+          }
+          type="button"
+          onClick={() => setView("day")}
+        >
+          Day
+        </button>
+        <button
+          className={
+            view === "week" ? "view-navigation__active" : "button-secondary"
+          }
+          type="button"
+          onClick={() => {
+            setIsWeekLoading(true);
+            setView("week");
+          }}
+        >
+          Week
+        </button>
+        <button
+          className={
+            view === "inbox" ? "view-navigation__active" : "button-secondary"
+          }
+          type="button"
+          onClick={() => setView("inbox")}
+        >
+          Inbox
+        </button>
+      </nav>
+
+      {view === "inbox" && (
+        <section className="panel inbox-panel" aria-busy={isInboxLoading}>
+          <h2>Inbox</h2>
+          {isInboxLoading && <p>Загрузка…</p>}
+          {!isInboxLoading && inbox.length === 0 && (
+            <p className="empty-state">Inbox пока пуст.</p>
+          )}
+          {inbox.length > 0 && (
+            <ul className="inbox-list">
+              {inbox.map((item) => (
+                <li className="inbox-list__item" key={item.id}>
+                  <span aria-hidden="true">□</span>
+                  {editingInboxItemId === item.id ? (
+                    <form
+                      className="action-edit-form"
+                      onSubmit={(event) =>
+                        void handleInboxRename(event, item.id)
                       }
-                    />
-                    <button
-                      type="submit"
-                      disabled={
-                        pendingInboxItemId === item.id ||
-                        !editingInboxTitle.trim()
+                    >
+                      <label
+                        className="visually-hidden"
+                        htmlFor={`inbox-edit-${item.id}`}
+                      >
+                        Название элемента Inbox
+                      </label>
+                      <input
+                        id={`inbox-edit-${item.id}`}
+                        value={editingInboxTitle}
+                        maxLength={500}
+                        onChange={(event) =>
+                          setEditingInboxTitle(event.target.value)
+                        }
+                      />
+                      <button
+                        type="submit"
+                        disabled={
+                          pendingInboxItemId === item.id ||
+                          !editingInboxTitle.trim()
+                        }
+                      >
+                        Сохранить
+                      </button>
+                      <button
+                        className="button-secondary"
+                        type="button"
+                        onClick={() => setEditingInboxItemId(null)}
+                      >
+                        Отмена
+                      </button>
+                    </form>
+                  ) : (
+                    <span>{item.title}</span>
+                  )}
+                  {editingInboxItemId !== item.id && (
+                    <div className="action-list__controls">
+                      <button
+                        className="button-secondary"
+                        type="button"
+                        disabled={pendingInboxItemId === item.id}
+                        aria-label={`Запланировать «${item.title}»`}
+                        onClick={() => {
+                          setSchedulingItem(item);
+                          setScheduleDate(selectedDate);
+                        }}
+                      >
+                        Schedule
+                      </button>
+                      <button
+                        className="button-secondary"
+                        type="button"
+                        disabled={pendingInboxItemId === item.id}
+                        aria-label={`Редактировать «${item.title}» в Inbox`}
+                        onClick={() => {
+                          setEditingInboxItemId(item.id);
+                          setEditingInboxTitle(item.title);
+                        }}
+                      >
+                        Изменить
+                      </button>
+                      <button
+                        className="button-danger"
+                        type="button"
+                        disabled={pendingInboxItemId === item.id}
+                        aria-label={`Удалить «${item.title}» из Inbox`}
+                        onClick={() => void handleInboxDelete(item)}
+                      >
+                        Удалить
+                      </button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <form className="action-form" onSubmit={handleInboxSubmit}>
+            <label htmlFor="inbox-title">Новая задача без даты</label>
+            <div className="action-form__row">
+              <input
+                id="inbox-title"
+                value={inboxTitle}
+                onChange={(event) => setInboxTitle(event.target.value)}
+                placeholder="Быстро сохранить мысль"
+                maxLength={500}
+              />
+              <button type="submit" disabled={!inboxTitle.trim()}>
+                + Добавить
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
+
+      {view === "day" && (
+        <section className="panel" aria-busy={isLoading}>
+          <h2>Действия</h2>
+          {isLoading && <p>Загрузка…</p>}
+          {!isLoading && day?.actions.length === 0 && (
+            <p className="empty-state">На этот день действий пока нет.</p>
+          )}
+          {!isLoading && day && day.actions.length > 0 && (
+            <ol className="action-list">
+              {day.actions.map((action) => (
+                <li
+                  className={
+                    action.completed
+                      ? "action-list__item action-list__item--completed"
+                      : "action-list__item"
+                  }
+                  key={action.id}
+                >
+                  <input
+                    aria-label={
+                      action.completed
+                        ? `Вернуть «${action.title}» в работу`
+                        : `Отметить «${action.title}» выполненным`
+                    }
+                    type="checkbox"
+                    checked={action.completed}
+                    disabled={pendingActionId === action.id}
+                    onChange={(event) =>
+                      void patchAction(
+                        action.id,
+                        { completed: event.target.checked },
+                        "Не удалось изменить состояние действия",
+                      )
+                    }
+                  />
+
+                  {editingActionId === action.id ? (
+                    <form
+                      className="action-edit-form"
+                      onSubmit={(event) =>
+                        void handleEditSubmit(event, action.id)
                       }
                     >
-                      Сохранить
-                    </button>
+                      <label
+                        className="visually-hidden"
+                        htmlFor={`edit-${action.id}`}
+                      >
+                        Название действия
+                      </label>
+                      <input
+                        id={`edit-${action.id}`}
+                        value={editingTitle}
+                        maxLength={500}
+                        onChange={(event) =>
+                          setEditingTitle(event.target.value)
+                        }
+                      />
+                      <button
+                        type="submit"
+                        disabled={
+                          pendingActionId === action.id || !editingTitle.trim()
+                        }
+                      >
+                        Сохранить
+                      </button>
+                      <button
+                        className="button-secondary"
+                        type="button"
+                        onClick={() => setEditingActionId(null)}
+                      >
+                        Отмена
+                      </button>
+                    </form>
+                  ) : (
+                    <span className="action-list__title">{action.title}</span>
+                  )}
+
+                  {editingActionId !== action.id && (
+                    <div className="action-list__controls">
+                      <button
+                        className="button-secondary"
+                        type="button"
+                        disabled={pendingActionId === action.id}
+                        aria-label={`Редактировать «${action.title}»`}
+                        onClick={() => {
+                          setEditingActionId(action.id);
+                          setEditingTitle(action.title);
+                        }}
+                      >
+                        Изменить
+                      </button>
+                      <button
+                        className="button-danger"
+                        type="button"
+                        disabled={pendingActionId === action.id}
+                        aria-label={`Удалить «${action.title}»`}
+                        onClick={() => void handleDelete(action)}
+                      >
+                        Удалить
+                      </button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+
+          <form className="action-form" onSubmit={handleSubmit}>
+            <label htmlFor="action-title">Новое действие</label>
+            <div className="action-form__row">
+              <input
+                id="action-title"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="Например, подготовить план встречи"
+                maxLength={500}
+              />
+              <button type="submit" disabled={isSaving || !title.trim()}>
+                {isSaving ? "Сохраняем…" : "Добавить"}
+              </button>
+            </div>
+          </form>
+
+          {displayedError && (
+            <p className="error" role="alert">
+              {displayedError}
+            </p>
+          )}
+        </section>
+      )}
+
+      {view === "week" && (
+        <section className="weekly-planning" aria-busy={isWeekLoading}>
+          <div className="week-controls">
+            <button
+              className="button-secondary"
+              type="button"
+              onClick={() => {
+                setIsWeekLoading(true);
+                setWeekAnchor(addDays(week?.weekStart ?? weekAnchor, -7));
+              }}
+            >
+              Previous Week
+            </button>
+            <strong>{week?.weekStart ?? weekAnchor}</strong>
+            <button
+              className="button-secondary"
+              type="button"
+              onClick={() => {
+                setIsWeekLoading(true);
+                setWeekAnchor(addDays(week?.weekStart ?? weekAnchor, 7));
+              }}
+            >
+              Next Week
+            </button>
+          </div>
+
+          {isWeekLoading && <p>Загрузка недели…</p>}
+          {!isWeekLoading && week && (
+            <div className="week-grid">
+              {week.days.map((weekDay, index) => (
+                <article className="week-day" key={weekDay.date}>
+                  <h2>{WEEKDAY_NAMES[index]}</h2>
+                  <p className="date-label">{weekDay.date}</p>
+                  {weekDay.actions.length === 0 ? (
+                    <p className="empty-state">Нет задач</p>
+                  ) : (
+                    <ul>
+                      {weekDay.actions.map((action) => (
+                        <li key={action.id}>{action.title}</li>
+                      ))}
+                    </ul>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+
+          <section className="panel weekly-inbox" aria-busy={isInboxLoading}>
+            <h2>Inbox</h2>
+            {!isInboxLoading && inbox.length === 0 && (
+              <p className="empty-state">Inbox пока пуст.</p>
+            )}
+            {inbox.length > 0 && (
+              <ul className="inbox-list">
+                {inbox.map((item) => (
+                  <li className="inbox-list__item" key={item.id}>
+                    <span aria-hidden="true">□</span>
+                    <span>{item.title}</span>
                     <button
                       className="button-secondary"
                       type="button"
-                      onClick={() => setEditingInboxItemId(null)}
-                    >
-                      Отмена
-                    </button>
-                  </form>
-                ) : (
-                  <span>{item.title}</span>
-                )}
-                {editingInboxItemId !== item.id && (
-                  <div className="action-list__controls">
-                    <button
-                      className="button-secondary"
-                      type="button"
-                      disabled={pendingInboxItemId === item.id}
-                      aria-label={`Запланировать «${item.title}»`}
+                      disabled={pendingInboxItemId === item.id || !week}
+                      aria-label={`Распределить «${item.title}» по неделе`}
                       onClick={() => {
-                        setSchedulingItem(item);
-                        setScheduleDate(selectedDate);
+                        setWeeklySchedulingItem(item);
+                        setWeeklyScheduleDate(week?.days[0].date ?? "");
                       }}
                     >
                       Schedule
                     </button>
-                    <button
-                      className="button-secondary"
-                      type="button"
-                      disabled={pendingInboxItemId === item.id}
-                      aria-label={`Редактировать «${item.title}» в Inbox`}
-                      onClick={() => {
-                        setEditingInboxItemId(item.id);
-                        setEditingInboxTitle(item.title);
-                      }}
-                    >
-                      Изменить
-                    </button>
-                    <button
-                      className="button-danger"
-                      type="button"
-                      disabled={pendingInboxItemId === item.id}
-                      aria-label={`Удалить «${item.title}» из Inbox`}
-                      onClick={() => void handleInboxDelete(item)}
-                    >
-                      Удалить
-                    </button>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <form className="action-form" onSubmit={handleInboxSubmit}>
-          <label htmlFor="inbox-title">Новая задача без даты</label>
-          <div className="action-form__row">
-            <input
-              id="inbox-title"
-              value={inboxTitle}
-              onChange={(event) => setInboxTitle(event.target.value)}
-              placeholder="Быстро сохранить мысль"
-              maxLength={500}
-            />
-            <button type="submit" disabled={!inboxTitle.trim()}>
-              + Добавить
-            </button>
-          </div>
-        </form>
-      </section>
-
-      <section className="panel" aria-busy={isLoading}>
-        <h2>Действия</h2>
-        {isLoading && <p>Загрузка…</p>}
-        {!isLoading && day?.actions.length === 0 && (
-          <p className="empty-state">На этот день действий пока нет.</p>
-        )}
-        {!isLoading && day && day.actions.length > 0 && (
-          <ol className="action-list">
-            {day.actions.map((action) => (
-              <li
-                className={
-                  action.completed
-                    ? "action-list__item action-list__item--completed"
-                    : "action-list__item"
-                }
-                key={action.id}
-              >
-                <input
-                  aria-label={
-                    action.completed
-                      ? `Вернуть «${action.title}» в работу`
-                      : `Отметить «${action.title}» выполненным`
-                  }
-                  type="checkbox"
-                  checked={action.completed}
-                  disabled={pendingActionId === action.id}
-                  onChange={(event) =>
-                    void patchAction(
-                      action.id,
-                      { completed: event.target.checked },
-                      "Не удалось изменить состояние действия",
-                    )
-                  }
-                />
-
-                {editingActionId === action.id ? (
-                  <form
-                    className="action-edit-form"
-                    onSubmit={(event) =>
-                      void handleEditSubmit(event, action.id)
-                    }
-                  >
-                    <label
-                      className="visually-hidden"
-                      htmlFor={`edit-${action.id}`}
-                    >
-                      Название действия
-                    </label>
-                    <input
-                      id={`edit-${action.id}`}
-                      value={editingTitle}
-                      maxLength={500}
-                      onChange={(event) => setEditingTitle(event.target.value)}
-                    />
-                    <button
-                      type="submit"
-                      disabled={
-                        pendingActionId === action.id || !editingTitle.trim()
-                      }
-                    >
-                      Сохранить
-                    </button>
-                    <button
-                      className="button-secondary"
-                      type="button"
-                      onClick={() => setEditingActionId(null)}
-                    >
-                      Отмена
-                    </button>
-                  </form>
-                ) : (
-                  <span className="action-list__title">{action.title}</span>
-                )}
-
-                {editingActionId !== action.id && (
-                  <div className="action-list__controls">
-                    <button
-                      className="button-secondary"
-                      type="button"
-                      disabled={pendingActionId === action.id}
-                      aria-label={`Редактировать «${action.title}»`}
-                      onClick={() => {
-                        setEditingActionId(action.id);
-                        setEditingTitle(action.title);
-                      }}
-                    >
-                      Изменить
-                    </button>
-                    <button
-                      className="button-danger"
-                      type="button"
-                      disabled={pendingActionId === action.id}
-                      aria-label={`Удалить «${action.title}»`}
-                      onClick={() => void handleDelete(action)}
-                    >
-                      Удалить
-                    </button>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ol>
-        )}
-
-        <form className="action-form" onSubmit={handleSubmit}>
-          <label htmlFor="action-title">Новое действие</label>
-          <div className="action-form__row">
-            <input
-              id="action-title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Например, подготовить план встречи"
-              maxLength={500}
-            />
-            <button type="submit" disabled={isSaving || !title.trim()}>
-              {isSaving ? "Сохраняем…" : "Добавить"}
-            </button>
-          </div>
-        </form>
-
-        {displayedError && (
-          <p className="error" role="alert">
-            {displayedError}
-          </p>
-        )}
-      </section>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </section>
+      )}
 
       {schedulingItem && (
         <div className="dialog-backdrop" role="presentation">
@@ -659,6 +892,39 @@ export function App() {
                   className="button-secondary"
                   type="button"
                   onClick={() => setSchedulingItem(null)}
+                >
+                  Отмена
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {weeklySchedulingItem && week && (
+        <div className="dialog-backdrop" role="presentation">
+          <section className="schedule-dialog" role="dialog" aria-modal="true">
+            <h2>Распределить по неделе</h2>
+            <p>{weeklySchedulingItem.title}</p>
+            <form className="action-form" onSubmit={handleWeeklySchedule}>
+              <label htmlFor="weekly-schedule-day">День недели</label>
+              <select
+                id="weekly-schedule-day"
+                value={weeklyScheduleDate}
+                onChange={(event) => setWeeklyScheduleDate(event.target.value)}
+              >
+                {week.days.map((day, index) => (
+                  <option key={day.date} value={day.date}>
+                    {WEEKDAY_NAMES[index]}
+                  </option>
+                ))}
+              </select>
+              <div className="dialog-actions">
+                <button type="submit">Запланировать</button>
+                <button
+                  className="button-secondary"
+                  type="button"
+                  onClick={() => setWeeklySchedulingItem(null)}
                 >
                   Отмена
                 </button>

@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
@@ -181,6 +187,7 @@ describe("App", () => {
       );
 
     render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Inbox" }));
     await screen.findByText("Купить молоко");
 
     fireEvent.click(
@@ -199,7 +206,7 @@ describe("App", () => {
         name: `Запланировать «${renamedInboxItem.title}»`,
       }),
     );
-    fireEvent.change(screen.getAllByLabelText("Дата")[1], {
+    fireEvent.change(screen.getByLabelText("Дата"), {
       target: { value: emptyDay.date },
     });
     fireEvent.click(screen.getByRole("button", { name: "Запланировать" }));
@@ -241,6 +248,7 @@ describe("App", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
 
     render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Inbox" }));
     await screen.findByText("Inbox пока пуст.");
 
     fireEvent.change(screen.getByLabelText("Новая задача без даты"), {
@@ -260,6 +268,109 @@ describe("App", () => {
       4,
       expect.stringContaining(`/inbox/${inboxItem.id}`),
       expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("shows seven days, schedules Inbox into the week and opens the next week", async () => {
+    const inboxItem = {
+      id: "d30cb4e8-6d7e-47cc-9abc-170747bc3a27",
+      title: "Подготовить отчёт",
+      created_at: "2026-07-20T09:00:00+00:00",
+    };
+    const week = {
+      weekStart: "2026-07-20",
+      days: Array.from({ length: 7 }, (_, index) => ({
+        date: `2026-07-${String(20 + index).padStart(2, "0")}`,
+        actions: [],
+      })),
+    };
+    const scheduledAction = {
+      id: "e30cb4e8-6d7e-47cc-9abc-170747bc3a27",
+      title: inboxItem.title,
+      completed: false,
+      created_at: "2026-07-20T10:00:00+00:00",
+    };
+    const nextWeek = {
+      weekStart: "2026-07-27",
+      days: Array.from({ length: 7 }, (_, index) => ({
+        date: new Date(Date.UTC(2026, 6, 27 + index))
+          .toISOString()
+          .slice(0, 10),
+        actions: [],
+      })),
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(emptyDay), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([inboxItem]), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(week), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(scheduledAction), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(nextWeek), { status: 200 }),
+      );
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+
+    for (const weekday of [
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+      "Sunday",
+    ]) {
+      expect(
+        await screen.findByRole("heading", { name: weekday }),
+      ).toBeInTheDocument();
+    }
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: `Распределить «${inboxItem.title}» по неделе`,
+      }),
+    );
+    fireEvent.change(screen.getByLabelText("День недели"), {
+      target: { value: "2026-07-21" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Запланировать" }));
+
+    const tuesday = screen
+      .getByRole("heading", { name: "Tuesday" })
+      .closest("article");
+    expect(tuesday).not.toBeNull();
+    expect(
+      await within(tuesday!).findByText(inboxItem.title),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: `Распределить «${inboxItem.title}» по неделе`,
+      }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next Week" }));
+    expect(await screen.findAllByText("2026-07-27")).toHaveLength(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining(`/inbox/${inboxItem.id}/schedule`),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ date: "2026-07-21" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      expect.stringContaining("/week?date=2026-07-27"),
+      expect.any(Object),
     );
   });
 });

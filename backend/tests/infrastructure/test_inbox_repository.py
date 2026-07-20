@@ -41,7 +41,7 @@ def test_inbox_repository_schedules_item_into_day_atomically(tmp_path: Path) -> 
     inbox_repository.add(item)
 
     action = inbox_repository.schedule(item.id, target_date)
-    day = day_repository.get_by_date(target_date)
+    day = day_repository.get_day_by_date(target_date)
 
     assert action is not None
     assert action.title == item.title
@@ -71,5 +71,5 @@ def test_failed_schedule_keeps_inbox_item_and_does_not_create_day(tmp_path: Path
         inbox_repository.schedule(item.id, target_date)
 
     assert inbox_repository.get(item.id) is not None
-    assert day_repository.get_by_date(target_date) is None
+    assert day_repository.get_day_by_date(target_date) is None
     engine.dispose()
