@@ -14,7 +14,7 @@ class DailyPlanningService:
         self._repository = repository
 
     def get_or_create_day(self, day_date: date) -> Day:
-        day = self._repository.get_by_date(day_date)
+        day = self._repository.get_day_by_date(day_date)
         if day is not None:
             return day
 

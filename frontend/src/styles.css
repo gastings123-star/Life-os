@@ -32,6 +32,17 @@ input {
   margin-bottom: 28px;
 }
 
+.view-navigation {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.view-navigation__active {
+  background: #17202a;
+  color: #fff;
+}
+
 .eyebrow {
   margin: 0 0 8px;
   color: #61707f;
@@ -254,6 +265,55 @@ button:disabled {
   gap: 8px;
 }
 
+.weekly-planning {
+  display: grid;
+  gap: 24px;
+}
+
+.week-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.week-day {
+  min-height: 180px;
+  border: 1px solid #dde3e8;
+  border-radius: 14px;
+  background: #fff;
+  padding: 16px;
+}
+
+.week-day h2 {
+  margin-bottom: 6px;
+  font-size: 1rem;
+}
+
+.week-day ul {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding-left: 18px;
+}
+
+.weekly-inbox {
+  margin-top: 0;
+}
+
+.schedule-dialog select {
+  border: 1px solid #cfd6dc;
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px 12px;
+}
+
 @media (max-width: 640px) {
   .workspace {
     padding: 32px 0;
@@ -262,6 +322,16 @@ button:disabled {
   .workspace__header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .view-navigation,
+  .week-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .week-grid {
+    grid-template-columns: 1fr;
   }
 
   .action-form__row {

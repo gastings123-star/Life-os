@@ -12,7 +12,7 @@ class SqlAlchemyDayRepository(DayRepository):
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
 
-    def get_by_date(self, day_date: date) -> Day | None:
+    def get_day_by_date(self, day_date: date) -> Day | None:
         with self._engine.connect() as connection:
             day_row = (
                 connection.execute(select(days).where(days.c.date == day_date))

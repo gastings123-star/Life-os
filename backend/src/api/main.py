@@ -5,6 +5,7 @@ from src.api.daily_planning import actions_router
 from src.api.daily_planning import router as daily_planning_router
 from src.api.errors import register_exception_handlers
 from src.api.inbox import router as inbox_router
+from src.api.weekly_planning import router as weekly_planning_router
 from src.config import get_settings
 
 
@@ -21,6 +22,7 @@ def create_app() -> FastAPI:
     application.include_router(daily_planning_router, prefix=settings.api_prefix)
     application.include_router(actions_router, prefix=settings.api_prefix)
     application.include_router(inbox_router, prefix=settings.api_prefix)
+    application.include_router(weekly_planning_router, prefix=settings.api_prefix)
     register_exception_handlers(application)
     return application
 

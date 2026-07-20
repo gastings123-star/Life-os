@@ -6,6 +6,7 @@ from sqlalchemy import Engine
 
 from src.application.daily_planning import DailyPlanningService
 from src.application.repositories import DayRepository
+from src.application.weekly_planning import WeeklyPlanningService
 from src.config import Settings, get_settings
 from src.infrastructure.database import create_database_engine
 from src.infrastructure.database.day_repository import SqlAlchemyDayRepository
@@ -31,3 +32,9 @@ def get_daily_planning_service(
     repository: Annotated[DayRepository, Depends(get_day_repository)],
 ) -> DailyPlanningService:
     return DailyPlanningService(repository)
+
+
+def get_weekly_planning_service(
+    repository: Annotated[DayRepository, Depends(get_day_repository)],
+) -> WeeklyPlanningService:
+    return WeeklyPlanningService(repository)
