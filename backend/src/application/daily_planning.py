@@ -1,13 +1,24 @@
 from datetime import date
 from typing import Protocol
+from uuid import UUID
 
 from src.domain.daily_planning import Action, Day
+
+
+class ActionNotFoundError(LookupError):
+    """Raised when an action cannot be found by its identifier."""
 
 
 class DayRepository(Protocol):
     def get_by_date(self, day_date: date) -> Day | None: ...
 
     def save(self, day: Day) -> None: ...
+
+    def get_action(self, action_id: UUID) -> Action | None: ...
+
+    def update_action(self, action: Action) -> None: ...
+
+    def delete_action(self, action_id: UUID) -> bool: ...
 
 
 class DailyPlanningService:
@@ -28,3 +39,28 @@ class DailyPlanningService:
         action = day.add_action(title)
         self._repository.save(day)
         return day, action
+
+    def update_action(
+        self,
+        action_id: UUID,
+        *,
+        title: str | None = None,
+        completed: bool | None = None,
+    ) -> Action:
+        action = self._get_action(action_id)
+        if title is not None:
+            action.rename(title)
+        if completed is not None:
+            action.set_completed(completed)
+        self._repository.update_action(action)
+        return action
+
+    def delete_action(self, action_id: UUID) -> None:
+        if not self._repository.delete_action(action_id):
+            raise ActionNotFoundError(f"Action {action_id} was not found")
+
+    def _get_action(self, action_id: UUID) -> Action:
+        action = self._repository.get_action(action_id)
+        if action is None:
+            raise ActionNotFoundError(f"Action {action_id} was not found")
+        return action

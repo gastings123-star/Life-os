@@ -1,7 +1,7 @@
 from datetime import UTC, date
 from uuid import UUID
 
-from sqlalchemy import Engine, insert, select
+from sqlalchemy import Engine, delete, insert, select, update
 
 from src.domain.daily_planning import Action, Day
 from src.infrastructure.database.metadata import actions, days
@@ -35,6 +35,7 @@ class SqlAlchemyDayRepository:
                         id=UUID(row["id"]),
                         day_id=UUID(row["day_id"]),
                         title=row["title"],
+                        completed=row["completed"],
                         created_at=(
                             row["created_at"].replace(tzinfo=UTC)
                             if row["created_at"].tzinfo is None
@@ -69,8 +70,43 @@ class SqlAlchemyDayRepository:
                             "id": str(action.id),
                             "day_id": str(action.day_id),
                             "title": action.title,
+                            "completed": action.completed,
                             "created_at": action.created_at,
                         }
                         for action in new_actions
                     ],
                 )
+
+    def get_action(self, action_id: UUID) -> Action | None:
+        with self._engine.connect() as connection:
+            row = (
+                connection.execute(select(actions).where(actions.c.id == str(action_id)))
+                .mappings()
+                .one_or_none()
+            )
+            if row is None:
+                return None
+            return Action(
+                id=UUID(row["id"]),
+                day_id=UUID(row["day_id"]),
+                title=row["title"],
+                completed=row["completed"],
+                created_at=(
+                    row["created_at"].replace(tzinfo=UTC)
+                    if row["created_at"].tzinfo is None
+                    else row["created_at"]
+                ),
+            )
+
+    def update_action(self, action: Action) -> None:
+        with self._engine.begin() as connection:
+            connection.execute(
+                update(actions)
+                .where(actions.c.id == str(action.id))
+                .values(title=action.title, completed=action.completed)
+            )
+
+    def delete_action(self, action_id: UUID) -> bool:
+        with self._engine.begin() as connection:
+            result = connection.execute(delete(actions).where(actions.c.id == str(action_id)))
+            return result.rowcount > 0

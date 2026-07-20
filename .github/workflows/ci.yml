@@ -87,3 +87,31 @@ jobs:
 
       - name: Build images
         run: docker compose build
+
+      - name: Start application
+        run: docker compose up -d
+
+      - name: Wait for backend
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:8000/health > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker compose logs
+          exit 1
+
+      - name: Check backend health
+        run: test "$(curl --fail --silent http://localhost:8000/health)" = '{"status":"ok"}'
+
+      - name: Check frontend
+        run: curl --fail --silent http://localhost:5173 | grep -q "Life OS"
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Stop application
+        if: always()
+        run: docker compose down

@@ -102,6 +102,37 @@ h2 {
   border-bottom: 1px solid #edf0f2;
 }
 
+.action-list__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.action-list__item--completed .action-list__title {
+  color: #73808c;
+  text-decoration: line-through;
+}
+
+.action-list__controls,
+.action-edit-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.action-edit-form {
+  grid-column: 2 / -1;
+}
+
+.action-edit-form input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid #cfd6dc;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
 .action-form {
   display: grid;
   gap: 10px;
@@ -138,6 +169,37 @@ button:disabled {
   opacity: 0.45;
 }
 
+.button-secondary,
+.button-danger {
+  padding: 8px 10px;
+  background: transparent;
+  color: #4c5965;
+}
+
+.button-secondary:hover {
+  background: #edf0f2;
+}
+
+.button-danger {
+  color: #a32121;
+}
+
+.button-danger:hover {
+  background: #fff0f0;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .error {
   margin: 20px 0 0;
   color: #a32121;
@@ -155,5 +217,14 @@ button:disabled {
 
   .action-form__row {
     grid-template-columns: 1fr;
+  }
+
+  .action-list__item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .action-list__controls,
+  .action-edit-form {
+    grid-column: 1 / -1;
   }
 }
