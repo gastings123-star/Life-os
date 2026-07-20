@@ -1,0 +1,20 @@
+:root {
+  color: #17202a;
+  background: #f7f8fa;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+}
+
+h1 {
+  font-size: clamp(3rem, 10vw, 7rem);
+  letter-spacing: -0.05em;
+}

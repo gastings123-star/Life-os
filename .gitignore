@@ -2,6 +2,7 @@
 .env
 .env.*
 node_modules/
+coverage/
 __pycache__/
 **/__pycache__/
 *.pyc
@@ -10,6 +11,7 @@ __pycache__/
 .venv/
 dist/
 build/
+.vite/
 *.db
 *.sqlite
 *.sqlite3
