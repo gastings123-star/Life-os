@@ -1,9 +1,13 @@
 from datetime import date
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
 from src.domain.daily_planning import Action, Day
 from src.domain.inbox import InboxItem
+
+if TYPE_CHECKING:
+    from src.application.commitment_day import ResolutionCommand
+    from src.domain.commitment_day import DailyCommitment, DailyPlan
 
 
 class DayRepository(Protocol):
@@ -30,3 +34,21 @@ class InboxRepository(Protocol):
     def delete(self, item_id: UUID) -> bool: ...
 
     def schedule(self, item_id: UUID, day_date: date) -> Action | None: ...
+
+
+class CommitmentDayRepository(Protocol):
+    def get_by_date(self, day_date: date) -> "DailyPlan | None": ...
+
+    def get_by_commitment_id(self, commitment_id: UUID) -> "DailyPlan | None": ...
+
+    def save_draft(self, plan: "DailyPlan") -> None: ...
+
+    def activate(self, plan: "DailyPlan") -> None: ...
+
+    def complete(self, commitment: "DailyCommitment") -> None: ...
+
+    def close(self, plan: "DailyPlan", commands: list["ResolutionCommand"]) -> "DailyPlan": ...
+
+    def get_unclosed_before(self, before: date) -> list["DailyPlan"]: ...
+
+    def get_summary(self, date_from: date | None, date_to: date | None) -> dict: ...

@@ -3,8 +3,13 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from src.application.commitment_day import (
+    CommitmentDayNotFoundError,
+    CommitmentNotFoundError,
+)
 from src.application.daily_planning import ActionNotFoundError
 from src.application.inbox import InboxItemNotFoundError
+from src.domain.commitment_day import CommitmentDayError
 from src.domain.daily_planning import EmptyActionTitleError
 from src.domain.inbox import EmptyInboxItemTitleError
 
@@ -14,6 +19,20 @@ def error_response(status_code: int, code: str, message: str) -> JSONResponse:
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(CommitmentDayNotFoundError)
+    async def commitment_day_not_found_handler(
+        _: Request, __: CommitmentDayNotFoundError
+    ) -> JSONResponse:
+        return error_response(404, "commitment_day_not_found", "План дня не найден")
+
+    @app.exception_handler(CommitmentNotFoundError)
+    async def commitment_not_found_handler(_: Request, __: CommitmentNotFoundError) -> JSONResponse:
+        return error_response(404, "commitment_not_found", "Результат дня не найден")
+
+    @app.exception_handler(CommitmentDayError)
+    async def commitment_day_error_handler(_: Request, error: CommitmentDayError) -> JSONResponse:
+        return error_response(422, error.code, str(error))
+
     @app.exception_handler(ActionNotFoundError)
     async def action_not_found_handler(_: Request, __: ActionNotFoundError) -> JSONResponse:
         return error_response(status.HTTP_404_NOT_FOUND, "action_not_found", "Действие не найдено")
