@@ -32,6 +32,7 @@ describe("App", () => {
       .mockResolvedValueOnce(
         new Response(JSON.stringify(emptyDay), { status: 200 }),
       )
+      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
       .mockResolvedValueOnce(
         new Response(JSON.stringify(dayWithAction), { status: 201 }),
       );
@@ -49,11 +50,11 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Добавить" }));
 
     await screen.findByText("Подготовить план встречи");
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
   });
 
   it("shows a clear message when the backend is unavailable", async () => {
-    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(
       new TypeError("Failed to fetch"),
     );
 
@@ -80,6 +81,7 @@ describe("App", () => {
       .mockResolvedValueOnce(
         new Response(JSON.stringify(dayWithAction), { status: 200 }),
       )
+      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
       .mockResolvedValueOnce(
         new Response(JSON.stringify(completedAction), { status: 200 }),
       )
@@ -128,7 +130,7 @@ describe("App", () => {
     );
 
     expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
+      3,
       expect.stringContaining(`/actions/${dayWithAction.actions[0].id}`),
       expect.objectContaining({
         method: "PATCH",
@@ -136,7 +138,7 @@ describe("App", () => {
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      3,
+      4,
       expect.stringContaining(`/actions/${dayWithAction.actions[0].id}`),
       expect.objectContaining({
         method: "PATCH",
@@ -144,8 +146,119 @@ describe("App", () => {
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      4,
+      5,
       expect.stringContaining(`/actions/${dayWithAction.actions[0].id}`),
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("renames and schedules an Inbox item into the selected day", async () => {
+    const inboxItem = {
+      id: "b30cb4e8-6d7e-47cc-9abc-170747bc3a27",
+      title: "Купить молоко",
+      created_at: "2026-07-20T07:30:00+00:00",
+    };
+    const renamedInboxItem = { ...inboxItem, title: "Купить овсяное молоко" };
+    const scheduledAction = {
+      id: "a30cb4e8-6d7e-47cc-9abc-170747bc3a27",
+      title: renamedInboxItem.title,
+      completed: false,
+      created_at: "2026-07-20T08:30:00+00:00",
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(emptyDay), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([inboxItem]), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(renamedInboxItem), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(scheduledAction), { status: 200 }),
+      );
+
+    render(<App />);
+    await screen.findByText("Купить молоко");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Редактировать «Купить молоко» в Inbox",
+      }),
+    );
+    fireEvent.change(screen.getByLabelText("Название элемента Inbox"), {
+      target: { value: renamedInboxItem.title },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    await screen.findByText(renamedInboxItem.title);
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: `Запланировать «${renamedInboxItem.title}»`,
+      }),
+    );
+    fireEvent.change(screen.getAllByLabelText("Дата")[1], {
+      target: { value: emptyDay.date },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Запланировать" }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", {
+          name: `Запланировать «${renamedInboxItem.title}»`,
+        }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText(renamedInboxItem.title)).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining(`/inbox/${inboxItem.id}/schedule`),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ date: emptyDay.date }),
+      }),
+    );
+  });
+
+  it("adds and deletes an Inbox item", async () => {
+    const inboxItem = {
+      id: "c30cb4e8-6d7e-47cc-9abc-170747bc3a27",
+      title: "Позвонить",
+      created_at: "2026-07-20T09:00:00+00:00",
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(emptyDay), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(inboxItem), { status: 201 }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<App />);
+    await screen.findByText("Inbox пока пуст.");
+
+    fireEvent.change(screen.getByLabelText("Новая задача без даты"), {
+      target: { value: inboxItem.title },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "+ Добавить" }));
+    await screen.findByText(inboxItem.title);
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: `Удалить «${inboxItem.title}» из Inbox`,
+      }),
+    );
+
+    await screen.findByText("Inbox пока пуст.");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining(`/inbox/${inboxItem.id}`),
       expect.objectContaining({ method: "DELETE" }),
     );
   });

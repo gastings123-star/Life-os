@@ -18,3 +18,11 @@ actions = Table(
     Column("completed", Boolean, nullable=False, server_default=false()),
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
+
+inbox_items = Table(
+    "inbox_items",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("title", String(500), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
