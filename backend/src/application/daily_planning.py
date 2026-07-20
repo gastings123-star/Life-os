@@ -47,6 +47,12 @@ class DailyPlanningService:
         if not self._repository.delete_action(action_id):
             raise ActionNotFoundError(f"Action {action_id} was not found")
 
+    def move_action(self, action_id: UUID, target_date: date) -> Action:
+        action = self._repository.move_action(action_id, target_date)
+        if action is None:
+            raise ActionNotFoundError(f"Action {action_id} was not found")
+        return action
+
     def _get_action(self, action_id: UUID) -> Action:
         action = self._repository.get_action(action_id)
         if action is None:

@@ -36,6 +36,10 @@ class UpdateActionRequest(BaseModel):
     completed: bool | None = None
 
 
+class MoveActionRequest(BaseModel):
+    date: date
+
+
 def serialize_day(day: Day) -> DayResponse:
     return DayResponse(
         id=day.id,
@@ -93,3 +97,12 @@ def update_action(
 @actions_router.delete("/{action_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_action(action_id: UUID, service: ServiceDependency) -> None:
     service.delete_action(action_id)
+
+
+@actions_router.post("/{action_id}/move", response_model=ActionResponse)
+def move_action(
+    action_id: UUID,
+    request: MoveActionRequest,
+    service: ServiceDependency,
+) -> ActionResponse:
+    return serialize_action(service.move_action(action_id, request.date))

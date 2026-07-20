@@ -1,5 +1,5 @@
 from datetime import UTC, date
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import Engine, delete, insert, select, update
 
@@ -111,3 +111,40 @@ class SqlAlchemyDayRepository(DayRepository):
         with self._engine.begin() as connection:
             result = connection.execute(delete(actions).where(actions.c.id == str(action_id)))
             return result.rowcount > 0
+
+    def move_action(self, action_id: UUID, target_date: date) -> Action | None:
+        with self._engine.begin() as connection:
+            action_row = (
+                connection.execute(select(actions).where(actions.c.id == str(action_id)))
+                .mappings()
+                .one_or_none()
+            )
+            if action_row is None:
+                return None
+
+            source_day_id = connection.execute(
+                select(days.c.id).where(days.c.id == action_row["day_id"])
+            ).scalar_one()
+            target_day_id = connection.execute(
+                select(days.c.id).where(days.c.date == target_date)
+            ).scalar_one_or_none()
+            if target_day_id is None:
+                target_day_id = str(uuid4())
+                connection.execute(insert(days).values(id=target_day_id, date=target_date))
+
+            connection.execute(
+                update(actions).where(actions.c.id == str(action_id)).values(day_id=target_day_id)
+            )
+
+            created_at = action_row["created_at"]
+            action = Action(
+                id=UUID(action_row["id"]),
+                day_id=UUID(source_day_id),
+                title=action_row["title"],
+                completed=action_row["completed"],
+                created_at=(
+                    created_at.replace(tzinfo=UTC) if created_at.tzinfo is None else created_at
+                ),
+            )
+            action.move_to_day(UUID(target_day_id))
+            return action

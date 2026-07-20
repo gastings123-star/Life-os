@@ -262,4 +262,55 @@ describe("App", () => {
       expect.objectContaining({ method: "DELETE" }),
     );
   });
+
+  it("moves an existing action to another day without reloading the page", async () => {
+    const targetDate = "2026-07-28";
+    const movedAction = dayWithAction.actions[0];
+    const targetDay = {
+      id: "4b22f5c0-bdb4-48ee-84a6-869e87a9a948",
+      date: targetDate,
+      actions: [movedAction],
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(dayWithAction), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(movedAction), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(targetDay), { status: 200 }),
+      );
+
+    render(<App />);
+    await screen.findByText(movedAction.title);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: `Перенести «${movedAction.title}»` }),
+    );
+    fireEvent.change(screen.getByLabelText("Новая дата"), {
+      target: { value: targetDate },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Перенести" }));
+
+    await waitFor(() =>
+      expect(screen.getAllByLabelText("Дата")[0]).toHaveValue(targetDate),
+    );
+    await screen.findByText(movedAction.title);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining(`/actions/${movedAction.id}/move`),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ date: targetDate }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining(`/days/${targetDate}`),
+      expect.any(Object),
+    );
+  });
 });
