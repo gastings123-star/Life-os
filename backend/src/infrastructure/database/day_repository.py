@@ -3,11 +3,12 @@ from uuid import UUID
 
 from sqlalchemy import Engine, delete, insert, select, update
 
+from src.application.repositories import DayRepository
 from src.domain.daily_planning import Action, Day
 from src.infrastructure.database.metadata import actions, days
 
 
-class SqlAlchemyDayRepository:
+class SqlAlchemyDayRepository(DayRepository):
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
 
