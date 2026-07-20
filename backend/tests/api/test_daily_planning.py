@@ -103,11 +103,42 @@ def test_action_lifecycle_returns_consistent_not_found_error(tmp_path: Path) -> 
 
     patch_response = client.patch(action_url, json={"completed": True})
     delete_response = client.delete(action_url)
+    move_response = client.post(f"{action_url}/move", json={"date": "2026-07-28"})
 
     expected_detail = {"code": "action_not_found", "message": "Действие не найдено"}
     assert patch_response.status_code == 404
     assert delete_response.status_code == 404
+    assert move_response.status_code == 404
     assert patch_response.json() == expected_detail
     assert delete_response.json() == expected_detail
+    assert move_response.json() == expected_detail
+    app.dependency_overrides.clear()
+    engine.dispose()
+
+
+def test_move_action_api_preserves_id_and_moves_between_days(tmp_path: Path) -> None:
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'move-action-api.sqlite3'}")
+    metadata.create_all(engine)
+    override_service(engine)
+    client = TestClient(app)
+    source_date = "2026-07-20"
+    target_date = "2026-07-28"
+    created = client.post(
+        f"/api/v1/days/{source_date}/actions",
+        json={"title": "Перенести"},
+    ).json()["actions"][0]
+
+    moved = client.post(
+        f"/api/v1/actions/{created['id']}/move",
+        json={"date": target_date},
+    )
+    source_day = client.get(f"/api/v1/days/{source_date}")
+    target_day = client.get(f"/api/v1/days/{target_date}")
+
+    assert moved.status_code == 200
+    assert moved.json()["id"] == created["id"]
+    assert moved.json()["created_at"] == created["created_at"]
+    assert source_day.json()["actions"] == []
+    assert [action["id"] for action in target_day.json()["actions"]] == [created["id"]]
     app.dependency_overrides.clear()
     engine.dispose()

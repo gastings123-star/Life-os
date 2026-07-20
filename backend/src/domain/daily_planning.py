@@ -33,6 +33,9 @@ class Action:
     def set_completed(self, completed: bool) -> None:
         self.completed = completed
 
+    def move_to_day(self, day_id: UUID) -> None:
+        self.day_id = day_id
+
 
 @dataclass(slots=True)
 class Day:

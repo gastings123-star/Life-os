@@ -77,6 +77,8 @@ export function App() {
   const [editingInboxTitle, setEditingInboxTitle] = useState("");
   const [schedulingItem, setSchedulingItem] = useState<InboxItem | null>(null);
   const [scheduleDate, setScheduleDate] = useState(selectedDate);
+  const [movingAction, setMovingAction] = useState<ActionItem | null>(null);
+  const [moveDate, setMoveDate] = useState(selectedDate);
 
   const isLoading =
     day?.date !== selectedDate && loadError?.date !== selectedDate;
@@ -384,6 +386,59 @@ export function App() {
     }
   }
 
+  async function handleMove(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!movingAction || !moveDate) return;
+
+    setPendingActionId(movingAction.id);
+    setError(null);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/actions/${movingAction.id}/move`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ date: moveDate }),
+        },
+      );
+      if (!response.ok) {
+        throw await responseError(response, "Не удалось перенести действие");
+      }
+      const movedAction = (await response.json()) as ActionItem;
+      if (moveDate === selectedDate) {
+        setDay((currentDay) =>
+          currentDay
+            ? {
+                ...currentDay,
+                actions: currentDay.actions.map((action) =>
+                  action.id === movedAction.id ? movedAction : action,
+                ),
+              }
+            : currentDay,
+        );
+      } else {
+        setDay((currentDay) =>
+          currentDay
+            ? {
+                ...currentDay,
+                actions: currentDay.actions.filter(
+                  (action) => action.id !== movedAction.id,
+                ),
+              }
+            : currentDay,
+        );
+        setSelectedDate(moveDate);
+      }
+      setMovingAction(null);
+    } catch (requestError) {
+      setError(
+        readableRequestError(requestError, "Не удалось перенести действие"),
+      );
+    } finally {
+      setPendingActionId(null);
+    }
+  }
+
   return (
     <main className="workspace">
       <header className="workspace__header">
@@ -591,6 +646,18 @@ export function App() {
                       className="button-secondary"
                       type="button"
                       disabled={pendingActionId === action.id}
+                      aria-label={`Перенести «${action.title}»`}
+                      onClick={() => {
+                        setMovingAction(action);
+                        setMoveDate(selectedDate);
+                      }}
+                    >
+                      Move
+                    </button>
+                    <button
+                      className="button-secondary"
+                      type="button"
+                      disabled={pendingActionId === action.id}
                       aria-label={`Редактировать «${action.title}»`}
                       onClick={() => {
                         setEditingActionId(action.id);
@@ -659,6 +726,36 @@ export function App() {
                   className="button-secondary"
                   type="button"
                   onClick={() => setSchedulingItem(null)}
+                >
+                  Отмена
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {movingAction && (
+        <div className="dialog-backdrop" role="presentation">
+          <section className="schedule-dialog" role="dialog" aria-modal="true">
+            <h2>Перенести действие</h2>
+            <p>{movingAction.title}</p>
+            <form className="action-form" onSubmit={handleMove}>
+              <label htmlFor="move-date">Новая дата</label>
+              <input
+                id="move-date"
+                type="date"
+                value={moveDate}
+                onChange={(event) => setMoveDate(event.target.value)}
+              />
+              <div className="dialog-actions">
+                <button type="submit" disabled={!moveDate}>
+                  Перенести
+                </button>
+                <button
+                  className="button-secondary"
+                  type="button"
+                  onClick={() => setMovingAction(null)}
                 >
                   Отмена
                 </button>
