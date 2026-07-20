@@ -14,10 +14,11 @@ def normalize_action_title(title: str) -> str:
     return normalized
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class Action:
     day_id: UUID
     title: str
+    completed: bool = False
     id: UUID = field(default_factory=uuid4)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -25,6 +26,12 @@ class Action:
         object.__setattr__(self, "title", normalize_action_title(self.title))
         if self.created_at.tzinfo is None:
             raise ValueError("created_at must include timezone information")
+
+    def rename(self, title: str) -> None:
+        self.title = normalize_action_title(title)
+
+    def set_completed(self, completed: bool) -> None:
+        self.completed = completed
 
 
 @dataclass(slots=True)

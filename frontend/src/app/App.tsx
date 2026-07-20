@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 type ActionItem = {
   id: string;
   title: string;
+  completed: boolean;
   created_at: string;
 };
 
@@ -24,6 +25,20 @@ function readableRequestError(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+async function responseError(
+  response: Response,
+  fallback: string,
+): Promise<Error> {
+  try {
+    const payload = (await response.json()) as {
+      detail?: { message?: string };
+    };
+    return new Error(payload.detail?.message ?? fallback);
+  } catch {
+    return new Error(fallback);
+  }
+}
+
 function localToday(): string {
   const now = new Date();
   const offset = now.getTimezoneOffset() * 60_000;
@@ -40,6 +55,9 @@ export function App() {
     message: string;
   } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [pendingActionId, setPendingActionId] = useState<string | null>(null);
+  const [editingActionId, setEditingActionId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
 
   const isLoading =
     day?.date !== selectedDate && loadError?.date !== selectedDate;
@@ -111,6 +129,93 @@ export function App() {
     }
   }
 
+  async function patchAction(
+    actionId: string,
+    updates: { title?: string; completed?: boolean },
+    fallbackError: string,
+  ): Promise<boolean> {
+    setPendingActionId(actionId);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/actions/${actionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      if (!response.ok) throw await responseError(response, fallbackError);
+      const updatedAction = (await response.json()) as ActionItem;
+      setDay((currentDay) =>
+        currentDay
+          ? {
+              ...currentDay,
+              actions: currentDay.actions.map((action) =>
+                action.id === updatedAction.id ? updatedAction : action,
+              ),
+            }
+          : currentDay,
+      );
+      return true;
+    } catch (requestError) {
+      setError(readableRequestError(requestError, fallbackError));
+      return false;
+    } finally {
+      setPendingActionId(null);
+    }
+  }
+
+  async function handleEditSubmit(
+    event: FormEvent<HTMLFormElement>,
+    actionId: string,
+  ) {
+    event.preventDefault();
+    if (!editingTitle.trim()) return;
+
+    const saved = await patchAction(
+      actionId,
+      { title: editingTitle },
+      "Не удалось переименовать действие",
+    );
+    if (saved) {
+      setEditingActionId(null);
+      setEditingTitle("");
+    }
+  }
+
+  async function handleDelete(action: ActionItem) {
+    if (!window.confirm(`Удалить действие «${action.title}»?`)) return;
+
+    setPendingActionId(action.id);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/actions/${action.id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw await responseError(response, "Не удалось удалить действие");
+      }
+      setDay((currentDay) =>
+        currentDay
+          ? {
+              ...currentDay,
+              actions: currentDay.actions.filter(
+                (currentAction) => currentAction.id !== action.id,
+              ),
+            }
+          : currentDay,
+      );
+      if (editingActionId === action.id) {
+        setEditingActionId(null);
+        setEditingTitle("");
+      }
+    } catch (requestError) {
+      setError(
+        readableRequestError(requestError, "Не удалось удалить действие"),
+      );
+    } finally {
+      setPendingActionId(null);
+    }
+  }
+
   return (
     <main className="workspace">
       <header className="workspace__header">
@@ -138,7 +243,97 @@ export function App() {
         {!isLoading && day && day.actions.length > 0 && (
           <ol className="action-list">
             {day.actions.map((action) => (
-              <li key={action.id}>{action.title}</li>
+              <li
+                className={
+                  action.completed
+                    ? "action-list__item action-list__item--completed"
+                    : "action-list__item"
+                }
+                key={action.id}
+              >
+                <input
+                  aria-label={
+                    action.completed
+                      ? `Вернуть «${action.title}» в работу`
+                      : `Отметить «${action.title}» выполненным`
+                  }
+                  type="checkbox"
+                  checked={action.completed}
+                  disabled={pendingActionId === action.id}
+                  onChange={(event) =>
+                    void patchAction(
+                      action.id,
+                      { completed: event.target.checked },
+                      "Не удалось изменить состояние действия",
+                    )
+                  }
+                />
+
+                {editingActionId === action.id ? (
+                  <form
+                    className="action-edit-form"
+                    onSubmit={(event) =>
+                      void handleEditSubmit(event, action.id)
+                    }
+                  >
+                    <label
+                      className="visually-hidden"
+                      htmlFor={`edit-${action.id}`}
+                    >
+                      Название действия
+                    </label>
+                    <input
+                      id={`edit-${action.id}`}
+                      value={editingTitle}
+                      maxLength={500}
+                      onChange={(event) => setEditingTitle(event.target.value)}
+                    />
+                    <button
+                      type="submit"
+                      disabled={
+                        pendingActionId === action.id || !editingTitle.trim()
+                      }
+                    >
+                      Сохранить
+                    </button>
+                    <button
+                      className="button-secondary"
+                      type="button"
+                      onClick={() => setEditingActionId(null)}
+                    >
+                      Отмена
+                    </button>
+                  </form>
+                ) : (
+                  <span className="action-list__title">{action.title}</span>
+                )}
+
+                {editingActionId !== action.id && (
+                  <div className="action-list__controls">
+                    <button
+                      className="button-secondary"
+                      type="button"
+                      disabled={pendingActionId === action.id}
+                      aria-label={`Редактировать «${action.title}»`}
+                      onClick={() => {
+                        setEditingActionId(action.id);
+                        setEditingTitle(action.title);
+                      }}
+                    >
+                      Изменить
+                    </button>
+                    <button
+                      className="button-danger"
+                      type="button"
+                      disabled={pendingActionId === action.id}
+                      aria-label={`Удалить «${action.title}»`}
+                      onClick={() => void handleDelete(action)}
+                    >
+                      Удалить
+                    </button>
+                  </div>
+                )}
+              </li>
             ))}
           </ol>
         )}

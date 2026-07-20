@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Date, DateTime, ForeignKey, MetaData, String, Table
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, MetaData, String, Table, false
 
 metadata = MetaData()
 
@@ -15,5 +15,6 @@ actions = Table(
     Column("id", String(36), primary_key=True),
     Column("day_id", String(36), ForeignKey("days.id", ondelete="CASCADE"), nullable=False),
     Column("title", String(500), nullable=False),
+    Column("completed", Boolean, nullable=False, server_default=false()),
     Column("created_at", DateTime(timezone=True), nullable=False),
 )

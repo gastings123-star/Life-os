@@ -15,6 +15,7 @@ const dayWithAction = {
     {
       id: "836d09f0-9ab9-4e65-91e6-6b2a18f2485e",
       title: "Подготовить план встречи",
+      completed: false,
       created_at: "2026-07-20T08:00:00+00:00",
     },
   ],
@@ -63,5 +64,89 @@ describe("App", () => {
         "Не удалось связаться с сервером. Проверьте, что backend запущен.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("completes, renames and deletes an action", async () => {
+    const completedAction = {
+      ...dayWithAction.actions[0],
+      completed: true,
+    };
+    const renamedAction = {
+      ...completedAction,
+      title: "Обновлённое действие",
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(dayWithAction), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(completedAction), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(renamedAction), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<App />);
+    await screen.findByText("Подготовить план встречи");
+
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: "Отметить «Подготовить план встречи» выполненным",
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("checkbox", {
+          name: "Вернуть «Подготовить план встречи» в работу",
+        }),
+      ).toBeChecked(),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Редактировать «Подготовить план встречи»",
+      }),
+    );
+    fireEvent.change(screen.getByLabelText("Название действия"), {
+      target: { value: "Обновлённое действие" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    await screen.findByText("Обновлённое действие");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Удалить «Обновлённое действие»",
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Обновлённое действие"),
+      ).not.toBeInTheDocument(),
+    );
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining(`/actions/${dayWithAction.actions[0].id}`),
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ completed: true }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining(`/actions/${dayWithAction.actions[0].id}`),
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ title: "Обновлённое действие" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining(`/actions/${dayWithAction.actions[0].id}`),
+      expect.objectContaining({ method: "DELETE" }),
+    );
   });
 });
