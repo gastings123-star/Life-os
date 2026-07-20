@@ -13,6 +13,12 @@ type Day = {
   actions: ActionItem[];
 };
 
+type InboxItem = {
+  id: string;
+  title: string;
+  created_at: string;
+};
+
 const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1"
 ).replace(/\/$/, "");
@@ -31,9 +37,10 @@ async function responseError(
 ): Promise<Error> {
   try {
     const payload = (await response.json()) as {
+      message?: string;
       detail?: { message?: string };
     };
-    return new Error(payload.detail?.message ?? fallback);
+    return new Error(payload.message ?? payload.detail?.message ?? fallback);
   } catch {
     return new Error(fallback);
   }
@@ -58,6 +65,18 @@ export function App() {
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
   const [editingActionId, setEditingActionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const [inbox, setInbox] = useState<InboxItem[]>([]);
+  const [inboxTitle, setInboxTitle] = useState("");
+  const [isInboxLoading, setIsInboxLoading] = useState(true);
+  const [pendingInboxItemId, setPendingInboxItemId] = useState<string | null>(
+    null,
+  );
+  const [editingInboxItemId, setEditingInboxItemId] = useState<string | null>(
+    null,
+  );
+  const [editingInboxTitle, setEditingInboxTitle] = useState("");
+  const [schedulingItem, setSchedulingItem] = useState<InboxItem | null>(null);
+  const [scheduleDate, setScheduleDate] = useState(selectedDate);
 
   const isLoading =
     day?.date !== selectedDate && loadError?.date !== selectedDate;
@@ -101,6 +120,155 @@ export function App() {
 
     return () => controller.abort();
   }, [selectedDate]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    fetch(`${API_BASE_URL}/inbox`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw await responseError(response, "Не удалось загрузить Inbox");
+        }
+        return (await response.json()) as InboxItem[];
+      })
+      .then((items) => setInbox(items))
+      .catch((requestError: Error) => {
+        if (requestError.name !== "AbortError") {
+          setError(
+            readableRequestError(requestError, "Не удалось загрузить Inbox"),
+          );
+        }
+      })
+      .finally(() => setIsInboxLoading(false));
+
+    return () => controller.abort();
+  }, []);
+
+  async function handleInboxSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!inboxTitle.trim()) return;
+
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/inbox`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: inboxTitle }),
+      });
+      if (!response.ok) {
+        throw await responseError(response, "Не удалось добавить в Inbox");
+      }
+      const createdItem = (await response.json()) as InboxItem;
+      setInbox((items) => [...items, createdItem]);
+      setInboxTitle("");
+    } catch (requestError) {
+      setError(
+        readableRequestError(requestError, "Не удалось добавить в Inbox"),
+      );
+    }
+  }
+
+  async function handleInboxRename(
+    event: FormEvent<HTMLFormElement>,
+    itemId: string,
+  ) {
+    event.preventDefault();
+    if (!editingInboxTitle.trim()) return;
+
+    setPendingInboxItemId(itemId);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/inbox/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: editingInboxTitle }),
+      });
+      if (!response.ok) {
+        throw await responseError(
+          response,
+          "Не удалось переименовать элемент Inbox",
+        );
+      }
+      const updated = (await response.json()) as InboxItem;
+      setInbox((items) =>
+        items.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setEditingInboxItemId(null);
+      setEditingInboxTitle("");
+    } catch (requestError) {
+      setError(
+        readableRequestError(
+          requestError,
+          "Не удалось переименовать элемент Inbox",
+        ),
+      );
+    } finally {
+      setPendingInboxItemId(null);
+    }
+  }
+
+  async function handleInboxDelete(item: InboxItem) {
+    if (!window.confirm(`Удалить «${item.title}» из Inbox?`)) return;
+
+    setPendingInboxItemId(item.id);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/inbox/${item.id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw await responseError(response, "Не удалось удалить элемент Inbox");
+      }
+      setInbox((items) => items.filter((current) => current.id !== item.id));
+    } catch (requestError) {
+      setError(
+        readableRequestError(requestError, "Не удалось удалить элемент Inbox"),
+      );
+    } finally {
+      setPendingInboxItemId(null);
+    }
+  }
+
+  async function handleSchedule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!schedulingItem || !scheduleDate) return;
+
+    setPendingInboxItemId(schedulingItem.id);
+    setError(null);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/inbox/${schedulingItem.id}/schedule`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ date: scheduleDate }),
+        },
+      );
+      if (!response.ok) {
+        throw await responseError(response, "Не удалось запланировать задачу");
+      }
+      const action = (await response.json()) as ActionItem;
+      setInbox((items) =>
+        items.filter((item) => item.id !== schedulingItem.id),
+      );
+      if (scheduleDate === selectedDate) {
+        setDay((currentDay) =>
+          currentDay
+            ? { ...currentDay, actions: [...currentDay.actions, action] }
+            : currentDay,
+        );
+      } else {
+        setSelectedDate(scheduleDate);
+      }
+      setSchedulingItem(null);
+    } catch (requestError) {
+      setError(
+        readableRequestError(requestError, "Не удалось запланировать задачу"),
+      );
+    } finally {
+      setPendingInboxItemId(null);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -234,6 +402,115 @@ export function App() {
         </label>
       </header>
 
+      <section className="panel inbox-panel" aria-busy={isInboxLoading}>
+        <h2>Inbox</h2>
+        {isInboxLoading && <p>Загрузка…</p>}
+        {!isInboxLoading && inbox.length === 0 && (
+          <p className="empty-state">Inbox пока пуст.</p>
+        )}
+        {inbox.length > 0 && (
+          <ul className="inbox-list">
+            {inbox.map((item) => (
+              <li className="inbox-list__item" key={item.id}>
+                <span aria-hidden="true">□</span>
+                {editingInboxItemId === item.id ? (
+                  <form
+                    className="action-edit-form"
+                    onSubmit={(event) => void handleInboxRename(event, item.id)}
+                  >
+                    <label
+                      className="visually-hidden"
+                      htmlFor={`inbox-edit-${item.id}`}
+                    >
+                      Название элемента Inbox
+                    </label>
+                    <input
+                      id={`inbox-edit-${item.id}`}
+                      value={editingInboxTitle}
+                      maxLength={500}
+                      onChange={(event) =>
+                        setEditingInboxTitle(event.target.value)
+                      }
+                    />
+                    <button
+                      type="submit"
+                      disabled={
+                        pendingInboxItemId === item.id ||
+                        !editingInboxTitle.trim()
+                      }
+                    >
+                      Сохранить
+                    </button>
+                    <button
+                      className="button-secondary"
+                      type="button"
+                      onClick={() => setEditingInboxItemId(null)}
+                    >
+                      Отмена
+                    </button>
+                  </form>
+                ) : (
+                  <span>{item.title}</span>
+                )}
+                {editingInboxItemId !== item.id && (
+                  <div className="action-list__controls">
+                    <button
+                      className="button-secondary"
+                      type="button"
+                      disabled={pendingInboxItemId === item.id}
+                      aria-label={`Запланировать «${item.title}»`}
+                      onClick={() => {
+                        setSchedulingItem(item);
+                        setScheduleDate(selectedDate);
+                      }}
+                    >
+                      Schedule
+                    </button>
+                    <button
+                      className="button-secondary"
+                      type="button"
+                      disabled={pendingInboxItemId === item.id}
+                      aria-label={`Редактировать «${item.title}» в Inbox`}
+                      onClick={() => {
+                        setEditingInboxItemId(item.id);
+                        setEditingInboxTitle(item.title);
+                      }}
+                    >
+                      Изменить
+                    </button>
+                    <button
+                      className="button-danger"
+                      type="button"
+                      disabled={pendingInboxItemId === item.id}
+                      aria-label={`Удалить «${item.title}» из Inbox`}
+                      onClick={() => void handleInboxDelete(item)}
+                    >
+                      Удалить
+                    </button>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <form className="action-form" onSubmit={handleInboxSubmit}>
+          <label htmlFor="inbox-title">Новая задача без даты</label>
+          <div className="action-form__row">
+            <input
+              id="inbox-title"
+              value={inboxTitle}
+              onChange={(event) => setInboxTitle(event.target.value)}
+              placeholder="Быстро сохранить мысль"
+              maxLength={500}
+            />
+            <button type="submit" disabled={!inboxTitle.trim()}>
+              + Добавить
+            </button>
+          </div>
+        </form>
+      </section>
+
       <section className="panel" aria-busy={isLoading}>
         <h2>Действия</h2>
         {isLoading && <p>Загрузка…</p>}
@@ -360,6 +637,36 @@ export function App() {
           </p>
         )}
       </section>
+
+      {schedulingItem && (
+        <div className="dialog-backdrop" role="presentation">
+          <section className="schedule-dialog" role="dialog" aria-modal="true">
+            <h2>Запланировать задачу</h2>
+            <p>{schedulingItem.title}</p>
+            <form className="action-form" onSubmit={handleSchedule}>
+              <label htmlFor="schedule-date">Дата</label>
+              <input
+                id="schedule-date"
+                type="date"
+                value={scheduleDate}
+                onChange={(event) => setScheduleDate(event.target.value)}
+              />
+              <div className="dialog-actions">
+                <button type="submit" disabled={!scheduleDate}>
+                  Запланировать
+                </button>
+                <button
+                  className="button-secondary"
+                  type="button"
+                  onClick={() => setSchedulingItem(null)}
+                >
+                  Отмена
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

@@ -4,7 +4,9 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from src.application.daily_planning import ActionNotFoundError
+from src.application.inbox import InboxItemNotFoundError
 from src.domain.daily_planning import EmptyActionTitleError
+from src.domain.inbox import EmptyInboxItemTitleError
 
 
 def error_response(status_code: int, code: str, message: str) -> JSONResponse:
@@ -16,11 +18,29 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def action_not_found_handler(_: Request, __: ActionNotFoundError) -> JSONResponse:
         return error_response(status.HTTP_404_NOT_FOUND, "action_not_found", "Действие не найдено")
 
+    @app.exception_handler(InboxItemNotFoundError)
+    async def inbox_item_not_found_handler(_: Request, __: InboxItemNotFoundError) -> JSONResponse:
+        return error_response(
+            status.HTTP_404_NOT_FOUND,
+            "inbox_item_not_found",
+            "Элемент Inbox не найден",
+        )
+
     @app.exception_handler(EmptyActionTitleError)
     async def empty_action_title_handler(_: Request, error: EmptyActionTitleError) -> JSONResponse:
         return error_response(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             "empty_action_title",
+            str(error),
+        )
+
+    @app.exception_handler(EmptyInboxItemTitleError)
+    async def empty_inbox_item_title_handler(
+        _: Request, error: EmptyInboxItemTitleError
+    ) -> JSONResponse:
+        return error_response(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "empty_inbox_item_title",
             str(error),
         )
 
