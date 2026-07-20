@@ -19,4 +19,4 @@ def test_cors_preflight_allows_action_patch() -> None:
     }
 
     assert response.status_code == 200
-    assert allowed_methods == {"GET", "POST", "PATCH", "DELETE"}
+    assert allowed_methods == {"GET", "POST", "PUT", "PATCH", "DELETE"}

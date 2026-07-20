@@ -37,6 +37,21 @@ cd ../frontend && npm install
 - frontend: <http://localhost:5173>;
 - проверка backend: <http://localhost:8000/health>.
 
+## Commitment Day: dogfood-эксперимент
+
+В экспериментальной ветке главным экраном является цикл «утренний договор → работа с выбранными
+результатами → вечернее закрытие». После запуска откройте <http://localhost:5173>, выберите дату,
+capacity, один главный и до двух дополнительных результатов, подтвердите план и закройте день.
+
+Итоги эксперимента доступны без dashboard:
+
+```bash
+curl "http://localhost:8000/api/v1/experiments/commitment-day/summary"
+```
+
+Подробности гипотезы, ограничений и критериев описаны в
+[`docs/product-experiments/commitment-day.md`](docs/product-experiments/commitment-day.md).
+
 ## Хранение данных
 
 Backend использует локальную SQLite. Адрес подключения задается переменной `LIFE_OS_DATABASE_URL`. По умолчанию база располагается в `data/life-os.sqlite3`.
