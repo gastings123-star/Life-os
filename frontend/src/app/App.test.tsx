@@ -28,12 +28,18 @@ describe("App", () => {
   it("loads a day and adds an action", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response(JSON.stringify(emptyDay), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify(dayWithAction), { status: 201 }));
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(emptyDay), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(dayWithAction), { status: 201 }),
+      );
 
     render(<App />);
 
-    expect(screen.getByRole("heading", { name: "План дня" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "План дня" }),
+    ).toBeInTheDocument();
     await screen.findByText("На этот день действий пока нет.");
 
     fireEvent.change(screen.getByLabelText("Новое действие"), {
@@ -43,5 +49,19 @@ describe("App", () => {
 
     await screen.findByText("Подготовить план встречи");
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("shows a clear message when the backend is unavailable", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(
+      new TypeError("Failed to fetch"),
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByText(
+        "Не удалось связаться с сервером. Проверьте, что backend запущен.",
+      ),
+    ).toBeInTheDocument();
   });
 });

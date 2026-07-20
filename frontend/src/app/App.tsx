@@ -12,7 +12,17 @@ type Day = {
   actions: ActionItem[];
 };
 
-const API_BASE_URL = "http://localhost:8000/api/v1";
+const API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1"
+).replace(/\/$/, "");
+
+const NETWORK_ERROR_MESSAGE =
+  "Не удалось связаться с сервером. Проверьте, что backend запущен.";
+
+function readableRequestError(error: unknown, fallback: string): string {
+  if (error instanceof TypeError) return NETWORK_ERROR_MESSAGE;
+  return error instanceof Error ? error.message : fallback;
+}
 
 function localToday(): string {
   const now = new Date();
@@ -25,29 +35,51 @@ export function App() {
   const [day, setDay] = useState<Day | null>(null);
   const [title, setTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<{
+    date: string;
+    message: string;
+  } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  const isLoading =
+    day?.date !== selectedDate && loadError?.date !== selectedDate;
+  const displayedError =
+    loadError?.date === selectedDate ? loadError.message : error;
+
   const formattedDate = useMemo(
-    () => new Intl.DateTimeFormat("ru-RU", { dateStyle: "full" }).format(new Date(`${selectedDate}T12:00:00`)),
+    () =>
+      new Intl.DateTimeFormat("ru-RU", { dateStyle: "full" }).format(
+        new Date(`${selectedDate}T12:00:00`),
+      ),
     [selectedDate],
   );
 
   useEffect(() => {
     const controller = new AbortController();
-    setIsLoading(true);
-    setError(null);
+    const requestedDate = selectedDate;
 
-    fetch(`${API_BASE_URL}/days/${selectedDate}`, { signal: controller.signal })
+    fetch(`${API_BASE_URL}/days/${requestedDate}`, {
+      signal: controller.signal,
+    })
       .then(async (response) => {
         if (!response.ok) throw new Error("Не удалось загрузить день");
         return (await response.json()) as Day;
       })
-      .then(setDay)
-      .catch((requestError: Error) => {
-        if (requestError.name !== "AbortError") setError(requestError.message);
+      .then((loadedDay) => {
+        setDay(loadedDay);
+        setLoadError(null);
       })
-      .finally(() => setIsLoading(false));
+      .catch((requestError: Error) => {
+        if (requestError.name !== "AbortError") {
+          setLoadError({
+            date: requestedDate,
+            message: readableRequestError(
+              requestError,
+              "Не удалось загрузить день",
+            ),
+          });
+        }
+      });
 
     return () => controller.abort();
   }, [selectedDate]);
@@ -59,16 +91,21 @@ export function App() {
     setIsSaving(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/days/${selectedDate}/actions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title }),
-      });
+      const response = await fetch(
+        `${API_BASE_URL}/days/${selectedDate}/actions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title }),
+        },
+      );
       if (!response.ok) throw new Error("Не удалось сохранить действие");
       setDay((await response.json()) as Day);
       setTitle("");
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Неизвестная ошибка");
+      setError(
+        readableRequestError(requestError, "Не удалось сохранить действие"),
+      );
     } finally {
       setIsSaving(false);
     }
@@ -84,14 +121,20 @@ export function App() {
         </div>
         <label className="date-picker">
           <span>Дата</span>
-          <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(event) => setSelectedDate(event.target.value)}
+          />
         </label>
       </header>
 
       <section className="panel" aria-busy={isLoading}>
         <h2>Действия</h2>
         {isLoading && <p>Загрузка…</p>}
-        {!isLoading && day?.actions.length === 0 && <p className="empty-state">На этот день действий пока нет.</p>}
+        {!isLoading && day?.actions.length === 0 && (
+          <p className="empty-state">На этот день действий пока нет.</p>
+        )}
         {!isLoading && day && day.actions.length > 0 && (
           <ol className="action-list">
             {day.actions.map((action) => (
@@ -116,7 +159,11 @@ export function App() {
           </div>
         </form>
 
-        {error && <p className="error" role="alert">{error}</p>}
+        {displayedError && (
+          <p className="error" role="alert">
+            {displayedError}
+          </p>
+        )}
       </section>
     </main>
   );

@@ -13,7 +13,11 @@ class SqlAlchemyDayRepository:
 
     def get_by_date(self, day_date: date) -> Day | None:
         with self._engine.connect() as connection:
-            day_row = connection.execute(select(days).where(days.c.date == day_date)).mappings().one_or_none()
+            day_row = (
+                connection.execute(select(days).where(days.c.date == day_date))
+                .mappings()
+                .one_or_none()
+            )
             if day_row is None:
                 return None
 
@@ -54,7 +58,9 @@ class SqlAlchemyDayRepository:
                     select(actions.c.id).where(actions.c.day_id == str(day.id))
                 ).scalars()
             )
-            new_actions = [action for action in day.actions if str(action.id) not in existing_action_ids]
+            new_actions = [
+                action for action in day.actions if str(action.id) not in existing_action_ids
+            ]
             if new_actions:
                 connection.execute(
                     insert(actions),
